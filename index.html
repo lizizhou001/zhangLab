@@ -1,0 +1,296 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>词云图在线生成工具</title>
+    <!-- 引入 wordcloud2.js -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/wordcloud2.js/1.2.2/wordcloud2.min.js"></script>
+    <style>
+        :root {
+            --primary-color: #4a90e2;
+            --bg-color: #f5f7f9;
+            --card-bg: #ffffff;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            background-color: var(--bg-color);
+            margin: 0;
+            padding: 20px;
+            color: #333;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            display: grid;
+            grid-template-columns: 350px 1fr;
+            gap: 20px;
+        }
+
+        .sidebar {
+            background: var(--card-bg);
+            padding: 20px;
+            border-radius: 12px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+            height: fit-content;
+        }
+
+        .main-content {
+            background: var(--card-bg);
+            padding: 20px;
+            border-radius: 12px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        h1 { font-size: 1.5rem; margin-top: 0; color: var(--primary-color); }
+        h2 { font-size: 1rem; margin-bottom: 10px; }
+
+        .form-group { margin-bottom: 15px; }
+        label { display: block; margin-bottom: 5px; font-size: 0.9rem; font-weight: bold; }
+
+        textarea {
+            width: 100%;
+            height: 150px;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            resize: vertical;
+            box-sizing: border-box;
+        }
+
+        input[type="range"], input[type="color"], select, input[type="file"] {
+            width: 100%;
+            margin-bottom: 10px;
+        }
+
+        .btn-group {
+            display: flex;
+            gap: 10px;
+            margin-top: 10px;
+        }
+
+        button {
+            flex: 1;
+            padding: 10px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: bold;
+            transition: opacity 0.2s;
+        }
+
+        .btn-generate { background-color: var(--primary-color); color: white; }
+        .btn-download { background-color: #2ecc71; color: white; }
+        button:hover { opacity: 0.9; }
+
+        #canvas-container {
+            width: 100%;
+            height: 600px;
+            border: 1px dashed #ccc;
+            margin-top: 20px;
+            position: relative;
+            overflow: hidden;
+            background: white;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        canvas {
+            cursor: crosshair;
+        }
+
+        .loading-overlay {
+            position: absolute;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(255,255,255,0.8);
+            display: none;
+            justify-content: center;
+            align-items: center;
+            z-index: 10;
+        }
+
+        @media (max-width: 800px) {
+            .container { grid-template-columns: 1fr; }
+            #canvas-container { height: 400px; }
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <div class="sidebar">
+        <h1>词云图生成器</h1>
+
+        <div class="form-group">
+            <label>输入文本 / 上传文件 (.txt)</label>
+            <textarea id="textInput" placeholder="在此粘贴你想生成词云的文字内容..."></textarea>
+            <input type="file" id="fileInput" accept=".txt">
+        </div>
+
+        <div class="form-group">
+            <label>最小字体大小: <span id="minVal">10</span></label>
+            <input type="range" id="minFontSize" min="5" max="50" value="10">
+        </div>
+
+        <div class="form-group">
+            <label>最大字体大小: <span id="maxVal">60</span></label>
+            <input type="range" id="maxFontSize" min="20" max="200" value="60">
+        </div>
+
+        <div class="form-group">
+            <label>背景颜色</label>
+            <input type="color" id="bgColor" value="#ffffff">
+        </div>
+
+        <div class="form-group">
+            <label>配色方案</label>
+            <select id="colorScheme">
+                <option value="random-dark">随机深色</option>
+                <option value="random-light">随机浅色</option>
+                <option value="blue-green">蓝绿调</option>
+                <option value="warm">暖色调</option>
+            </select>
+        </div>
+
+        <div class="btn-group">
+            <button class="btn-generate" onclick="generateCloud()">生成词云</button>
+            <button class="btn-download" onclick="downloadImage()">下载图片</button>
+        </div>
+    </div>
+
+    <div class="main-content">
+        <h2>效果预览</h2>
+        <div id="canvas-container">
+            <div id="loading" class="loading-overlay">正在生成中...</div>
+            <canvas id="wordCanvas"></canvas>
+        </div>
+    </div>
+</div>
+
+<script>
+    const canvas = document.getElementById('wordCanvas');
+    const container = document.getElementById('canvas-container');
+    const minFsInput = document.getElementById('minFontSize');
+    const maxFsInput = document.getElementById('maxFontSize');
+
+    // 初始化画布大小
+    function resizeCanvas() {
+        canvas.width = container.offsetWidth - 40;
+        canvas.height = container.offsetHeight - 40;
+    }
+    window.addEventListener('resize', resizeCanvas);
+    resizeCanvas();
+
+    // 更新显示的数值
+    minFsInput.oninput = () => document.getElementById('minVal').innerText = minFsInput.value;
+    maxFsInput.oninput = () => document.getElementById('maxVal').innerText = maxFsInput.value;
+
+    // 处理文件上传
+    document.getElementById('fileInput').addEventListener('change', function(e) {
+        const file = e.target.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = function(e) {
+            document.getElementById('textInput').value = e.target.result;
+        };
+        reader.readAsText(file);
+    });
+
+    // 简单的分词和停用词过滤 (中文增强型)
+    function processText(text) {
+        const stopWords = new Set(['的', '了', '在', '是', '我', '有', '和', '就', '不', '人', '都', '一', '一个', '上', '也', '很', '到', '说', '要', '去', '你', '会', '着', '没有', '看', '好', '自己', '这', 'the', 'and', 'to', 'of', 'a', 'in', 'is', 'it', 'for', 'with', 'that']);
+
+        // 匹配中文、英文单词和数字，过滤掉标点
+        const words = text.match(/[\u4e00-\u9fa5]{2,}|[a-zA-Z0-9]+/g);
+        if (!words) return [];
+
+        const counts = {};
+        words.forEach(word => {
+            word = word.toLowerCase();
+            if (word.length > 1 && !stopWords.has(word)) {
+                counts[word] = (counts[word] || 0) + 1;
+            }
+        });
+
+        return Object.entries(counts).sort((a, b) => b[1] - a[1]);
+    }
+
+    function getColor(word, weight, fontSize, distance, theta) {
+        const scheme = document.getElementById('colorScheme').value;
+        if (scheme === 'random-dark') {
+            return `hsl(${Math.random() * 360}, 70%, 30%)`;
+        } else if (scheme === 'random-light') {
+            return `hsl(${Math.random() * 360}, 60%, 60%)`;
+        } else if (scheme === 'blue-green') {
+            return `hsl(${160 + Math.random() * 60}, 80%, ${30 + Math.random() * 30}%)`;
+        } else if (scheme === 'warm') {
+            return `hsl(${Math.random() * 40}, 80%, ${40 + Math.random() * 20}%)`;
+        }
+    }
+
+    function generateCloud() {
+        const text = document.getElementById('textInput').value.trim();
+        if (!text) {
+            alert('请先输入一些文字内容！');
+            return;
+        }
+
+        const loading = document.getElementById('loading');
+        loading.style.display = 'flex';
+
+        const list = processText(text);
+        if (list.length === 0) {
+            alert('无法从文本中提取足够的有效词汇。');
+            loading.style.display = 'none';
+            return;
+        }
+
+        const minSize = parseInt(minFsInput.value);
+        const maxSize = parseInt(maxFsInput.value);
+        const maxCount = list[0][1];
+        const minCount = list[list.length - 1][1];
+
+        const weightFactor = (maxSize - minSize) / (maxCount - minCount || 1);
+
+        WordCloud(canvas, {
+            list: list,
+            gridSize: Math.round(16 * canvas.width / 1024),
+            weightFactor: (size) => minSize + (size - minCount) * weightFactor,
+            fontFamily: 'PingFang SC, Microsoft YaHei, sans-serif',
+            color: getColor,
+            rotateRatio: 0.5,
+            rotationSteps: 2,
+            backgroundColor: document.getElementById('bgColor').value,
+            shuffle: true,
+            drawOutOfBound: false,
+            clearCanvas: true
+        });
+
+        // 模拟生成完成
+        setTimeout(() => {
+            loading.style.display = 'none';
+        }, 1500);
+    }
+
+    function downloadImage() {
+        const link = document.createElement('a');
+        link.download = 'my-wordcloud.png';
+        link.href = canvas.toDataURL('image/png');
+        link.click();
+    }
+
+    // 默认示例文字
+    document.getElementById('textInput').value = "词云图 词云图 可视化 数据分析 词云图 JavaScript 网页工具 开源 词频 统计 文字 艺术 布局 算法 词频统计 酷炫 交互 动态 简单易用 高效 设计 颜色 字体 旋转";
+    window.onload = () => {
+        setTimeout(generateCloud, 500);
+    };
+</script>
+
+</body>
+</html>
