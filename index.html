@@ -47,15 +47,25 @@
         @media (max-width: 768px) {
             .menu-toggle { display: block; }
             .nav-links {
-                display: none;
+                display: flex;
                 flex-direction: column;
                 position: absolute;
                 top: 60px; left: 0; width: 100%;
                 background: white;
                 box-shadow: 0 5px 15px rgba(0,0,0,0.1);
                 padding: 15px 0;
+
+                /* 初始状态：透明且向上偏移 */
+                opacity: 0;
+                transform: translateY(-10px);
+                pointer-events: none;
+                transition: all 0.3s ease-in-out;
             }
-            .nav-links.active { display: flex; }
+            .nav-links.active {
+                opacity: 1;
+                transform: translateY(0);
+                pointer-events: all;
+            }
             .nav-links a { margin: 12px 0; width: 100%; text-align: center; margin-left: 0; font-size: 1.1rem; }
             
             .profile-container { flex-direction: column; text-align: center; gap: 30px; }
@@ -260,8 +270,28 @@
     const toggle = document.getElementById('mobile-toggle');
     const menu = document.getElementById('nav-menu');
 
-    toggle.addEventListener('click', () => {
+    toggle.addEventListener('click', (e) => {
+        e.stopPropagation();
         menu.classList.toggle('active');
+    });
+
+    // 点击外部区域关闭菜单
+    document.addEventListener('click', (e) => {
+        if (!menu.contains(e.target) && !toggle.contains(e.target)) {
+            menu.classList.remove('active');
+        }
+    });
+
+    // 滚动网页时收回菜单
+    window.addEventListener('scroll', () => {
+        if (menu.classList.contains('active')) {
+            menu.classList.remove('active');
+        }
+    }, { passive: true });
+
+    // 鼠标移出菜单区域时收回 (适用于桌面端调试或特定交互)
+    menu.addEventListener('mouseleave', () => {
+        menu.classList.remove('active');
     });
 
     // 点击链接后自动关闭菜单
